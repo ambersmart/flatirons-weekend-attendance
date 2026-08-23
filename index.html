@@ -259,9 +259,11 @@ function buildModel(rows){
   }
   if (!priorY){
     var target = thisW.ms - 364*86400000, best=null, bestGap=Infinity;
-    sList.forEach(function(s){ var g=Math.abs(s.ms-target); if (s.ms<lastW?.ms || !lastW){} if (g<bestGap && s.year<=thisW.year-1){bestGap=g;best=s;} });
+    sList.forEach(function(s){ var g=Math.abs(s.ms-target); if (g<bestGap && s.year<=thisW.year-1){bestGap=g;best=s;} });
     priorY = best;
   }
+  // a single weekend can't be both "last weekend" and "last year"
+  if (priorY && lastW && priorY.ms===lastW.ms) priorY = null;
 
   var keyMs = {tw:thisW?thisW.ms:null, lw:lastW?lastW.ms:null, ly:priorY?priorY.ms:null};
 
@@ -433,12 +435,30 @@ function readRows(worksheet){
     var find = colFinder(columns);
     var iCampus = find("campus");
     var iService= find("service time","service");
-    var iSvcDate= find("service date","metric value date","date");   // actual Sat/Sun date of the service
     var iAge    = find("age range","age");
     var iSunday = find("sunday");
     var iWeek   = find("week of year","week");
     var iVal    = find("y value","value","attendance","measure");
-    if (iSvcDate === iSunday) iSvcDate = -1;   // don't reuse the Sunday column as the service date
+    // Service Date = the actual Sat/Sun/Fri date of each service (distinct from the
+    // Sunday anchor). Detect by name, then by data type, then by sniffing a value —
+    // so it works no matter what the summary column ends up being called.
+    var iSvcDate = find("service date","metric value date");
+    if (iSvcDate === iSunday) iSvcDate = -1;
+    if (iSvcDate === -1){
+      for (var di=0; di<columns.length; di++){
+        if (di===iSunday) continue;
+        if (String(columns[di].dataType||"").toLowerCase().indexOf("date")>-1){ iSvcDate=di; break; }
+      }
+    }
+    if (iSvcDate === -1 && data.length){
+      for (var dj=0; dj<columns.length; dj++){
+        if (dj===iSunday) continue;
+        var cell=data[0][dj];
+        var v=cell?(cell.nativeValue!=null?cell.nativeValue:cell.value):null;
+        var s=String((v!=null?v:(cell&&cell.formattedValue))||"");
+        if ((v instanceof Date) || /\d{4}-\d{2}-\d{2}/.test(s) || /^\d{1,2}\/\d{1,2}\/\d{4}/.test(s)){ iSvcDate=dj; break; }
+      }
+    }
     // fall back: measure = last numeric column
     if (iVal === -1){
       for (var k=columns.length-1;k>=0;k--){ if (String(columns[k].dataType).indexOf("float")>-1||String(columns[k].dataType).indexOf("int")>-1){ iVal=k; break; } }
