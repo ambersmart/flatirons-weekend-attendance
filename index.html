@@ -434,26 +434,28 @@ function readRows(worksheet){
     return out;
   }
 
-  // Prefer the newer streaming reader when available; fall back to getSummaryDataAsync.
-  if (typeof worksheet.getSummaryDataReaderAsync === "function"){
-    return worksheet.getSummaryDataReaderAsync(undefined, {ignoreSelection:true}).then(function(reader){
-      var all=[];
-      function pump(){
-        return reader.getNextPageAsync().then(function(page){
-          if (page && page.data && page.data.length){ all.push({columns:page.columns, data:page.data}); }
-          if (reader.hasMorePages()) return pump();
-          return reader.releaseAsync().then(function(){
-            var cols = all.length?all[0].columns:[];
-            var merged=[]; all.forEach(function(p){ p.data.forEach(function(r){merged.push(r);}); });
-            return mapData(cols, merged);
-          });
-        });
-      }
-      return pump();
+  // Primary: getSummaryDataAsync — simple and widely supported. This sheet's
+  // data volume is small, so pulling it in one call is fine.
+  if (typeof worksheet.getSummaryDataAsync === "function"){
+    return worksheet.getSummaryDataAsync({ignoreSelection:true, maxRows:0}).then(function(sd){
+      return mapData(sd.columns, sd.data);
     });
   }
-  return worksheet.getSummaryDataAsync({ignoreSelection:true, maxRows:0}).then(function(sd){
-    return mapData(sd.columns, sd.data);
+  // Fallback: streaming reader (newer API). Correct interface = pageCount + getPageAsync.
+  return worksheet.getSummaryDataReaderAsync(undefined, {ignoreSelection:true}).then(function(reader){
+    var cols=null, all=[], pages = reader.pageCount || 0;
+    var seq = Promise.resolve();
+    for (var i=0;i<pages;i++){ (function(n){
+      seq = seq.then(function(){
+        return reader.getPageAsync(n).then(function(dt){
+          if(!cols) cols=dt.columns;
+          dt.data.forEach(function(r){ all.push(r); });
+        });
+      });
+    })(i); }
+    return seq
+      .then(function(){ return reader.releaseAsync(); })
+      .then(function(){ return mapData(cols||[], all); });
   });
 }
 
