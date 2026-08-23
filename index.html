@@ -273,9 +273,18 @@ function buildModel(rows){
     return campuses[c];
   }
   function ensureService(cObj,s){
-    if (!cObj.services[s]){ cObj.services[s]={name:s, tw:null,lw:null,ly:null, adults:0, kids:0};
+    if (!cObj.services[s]){ cObj.services[s]={name:s, tw:null,lw:null,ly:null, adults:0, kids:0, sortKey:null};
       cObj.serviceOrder.push(s); }
     return cObj.services[s];
+  }
+  // minutes-since-midnight from a service name like "9:00am" / "5:00pm" / "5:30pm"
+  function timeMinutes(name){
+    var m = String(name||"").match(/(\d{1,2}):(\d{2})\s*([ap]m)?/i);
+    if (!m) return 9999;
+    var h=+m[1], min=+m[2], ap=(m[3]||"").toLowerCase();
+    if (ap==="pm" && h<12) h+=12;
+    if (ap==="am" && h===12) h=0;
+    return h*60+min;
   }
   function periodOf(ms){ if(ms===keyMs.tw)return "tw"; if(ms===keyMs.lw)return "lw"; if(ms===keyMs.ly)return "ly"; return null; }
 
@@ -287,6 +296,13 @@ function buildModel(rows){
     if (!p) return;
     var c = ensureCampus(r.campus);
     var s = ensureService(c, r.service);
+    // sort key: weekend day offset (Sat before Sun) then time of day. Prefer a
+    // row that actually has a service date so Saturday services sort first.
+    if (s.sortKey == null || r.serviceDate){
+      var dayOff = (r.serviceDate && r.sunday)
+        ? Math.round((r.serviceDate.getTime()-r.sunday.getTime())/86400000) : 0;
+      s.sortKey = dayOff*1440 + timeMinutes(r.service);
+    }
     // service period totals
     s[p] = (s[p]==null?0:s[p]) + r.value;
     // campus period totals
@@ -300,6 +316,16 @@ function buildModel(rows){
       else if (isAdult){ s.adults += r.value; c.adults += r.value; grand.adults += r.value; }
       else { s.adults += r.value; c.adults += r.value; grand.adults += r.value; } // anything else -> adults
     }
+  });
+
+  // campuses: highest to lowest by this-weekend total
+  campusOrder.sort(function(a,b){ return campuses[b].tw - campuses[a].tw; });
+  // services within each campus: Saturday services first, then by time of day
+  campusOrder.forEach(function(cn){
+    campuses[cn].serviceOrder.sort(function(a,b){
+      var ka=campuses[cn].services[a].sortKey, kb=campuses[cn].services[b].sortKey;
+      return (ka==null?9e9:ka)-(kb==null?9e9:kb);
+    });
   });
 
   return {thisW:thisW, lastW:lastW, priorY:priorY, grand:grand,
@@ -407,10 +433,12 @@ function readRows(worksheet){
     var find = colFinder(columns);
     var iCampus = find("campus");
     var iService= find("service time","service");
+    var iSvcDate= find("service date","metric value date","date");   // actual Sat/Sun date of the service
     var iAge    = find("age range","age");
     var iSunday = find("sunday");
     var iWeek   = find("week of year","week");
     var iVal    = find("y value","value","attendance","measure");
+    if (iSvcDate === iSunday) iSvcDate = -1;   // don't reuse the Sunday column as the service date
     // fall back: measure = last numeric column
     if (iVal === -1){
       for (var k=columns.length-1;k>=0;k--){ if (String(columns[k].dataType).indexOf("float")>-1||String(columns[k].dataType).indexOf("int")>-1){ iVal=k; break; } }
@@ -419,12 +447,15 @@ function readRows(worksheet){
     data.forEach(function(row){
       var rawS = iSunday>-1 ? row[iSunday] : null;
       var sd = rawS ? dateParts(rawS.nativeValue!=null?rawS.nativeValue:rawS.value, rawS.formattedValue) : null;
+      var rawSvc = iSvcDate>-1 ? row[iSvcDate] : null;
+      var svcd = rawSvc ? dateParts(rawSvc.nativeValue!=null?rawSvc.nativeValue:rawSvc.value, rawSvc.formattedValue) : null;
       var vv = iVal>-1 ? row[iVal] : null;
       var num = vv ? (typeof vv.nativeValue==="number"?vv.nativeValue:parseFloat(String(vv.value).replace(/[^0-9.\-]/g,""))) : 0;
       if (isNaN(num)) num=0;
       out.push({
         campus:  iCampus>-1 ? row[iCampus].formattedValue : "Unknown",
         service: iService>-1 ? row[iService].formattedValue : "",
+        serviceDate: svcd,
         agegroup:iAge>-1 ? row[iAge].formattedValue : "",
         sunday:  sd,
         weekOfYear: iWeek>-1 ? parseInt(String(row[iWeek].value).replace(/[^0-9\-]/g,""),10) : null,
