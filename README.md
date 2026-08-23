@@ -9,25 +9,23 @@ breakdown, with **last-weekend** and **prior-year-same-week** comparisons.
 - `index.html` — the whole extension (design + logic in one file).
 - `icon.png` — the tile icon.
 
-## How to test it locally (Tableau Desktop)
+## How to add it in Tableau
 
-Tableau won't load an extension from a `file://` path — it requires `https://` or
-`http://localhost`. So the extension is served from a tiny local web server.
+The extension is hosted on GitHub Pages, so there's **nothing to run** — no local server.
 
-**Step 1 — start the local server** (leave this window open while you use the extension):
-
-```
-python -m http.server 8791 --bind 127.0.0.1 --directory "D:\Client\Flatirons Church\weekend-attendance-extension"
-```
-
-**Step 2 — add it in Tableau:**
 1. Open your workbook. Make sure the dashboard contains the **Weekly Attendance** sheet
    (it can be tucked off to the side — the extension reads it, it doesn't need to be visible).
 2. In the dashboard, drag **Objects → Extension** onto the canvas.
 3. Choose **Access Local Extensions** and pick `WeekendAttendance.trex`.
 4. It reads the sheet and draws the report. It re-draws automatically when filters change.
 
-If Tableau says it can't reach the extension, the server in Step 1 isn't running.
+Works on Tableau Desktop, Server, and Cloud.
+
+- Hosted page: https://ambersmart.github.io/flatirons-weekend-attendance/
+- Repo: https://github.com/ambersmart/flatirons-weekend-attendance
+
+To update the look or logic later, edit `index.html`, commit, and push — the live
+extension updates automatically (Tableau may need a refresh).
 
 ## Nothing to add on the Tableau side
 All the comparison math (last weekend, prior year, %, discontinued services) is done

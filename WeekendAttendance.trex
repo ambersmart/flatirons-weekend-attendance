@@ -7,9 +7,9 @@
     <author name="Smart Metrix Data" email="amber@smartmetrixdata.com" organization="Smart Metrix Data" website="https://smartmetrixdata.com"/>
     <min-api-version>1.4</min-api-version>
     <source-location>
-      <!-- LOCAL TEST URL. A small local server must be running (see README).
-           To publish for Server/Cloud, swap this for your GitHub Pages https URL. -->
-      <url>http://localhost:8791/index.html</url>
+      <!-- Hosted on GitHub Pages — works on Tableau Desktop, Server, and Cloud.
+           No local server needed. -->
+      <url>https://ambersmart.github.io/flatirons-weekend-attendance/index.html</url>
     </source-location>
     <icon>iVBORw0KGgoAAAANSUhEUgAAAEYAAABGCAIAAAD+THXTAAAAfElEQVR42u3asQ2AIBCGUSawt6NiEhd3CRagYA0GMMHGQLy85O+/e/2l3mqwJSQkJCQkJCQkpJ8cel/HZEhISEhISEjxSSWfr0NCQkJCQkJCQtpLmiefYSQkJCQkJCQkpPWkb5NISEhISEhISEhISEhxSB5BkZCQkJA2kAZJwUW2lnmbsgAAAABJRU5ErkJggg==</icon>
   </dashboard-extension>
