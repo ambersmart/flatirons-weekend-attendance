@@ -197,23 +197,33 @@ function yearOf(raw, formatted){
   var m = String(raw||formatted||"").match(/(\d{4})/);
   return m ? parseInt(m[1],10) : null;
 }
-// month/day from a date value, for the weekend label.
-// Normalizes to a LOCAL calendar date so getDate()/getDay() are correct
-// regardless of the viewer's time zone (Tableau sends dates as UTC midnight,
-// which otherwise rolls back a day in negative-offset zones like Mountain Time).
-function dateParts(raw, formatted){
-  if (raw instanceof Date){
-    if (isNaN(raw)) return null;
-    return new Date(raw.getUTCFullYear(), raw.getUTCMonth(), raw.getUTCDate());
-  }
-  var s = String(raw != null ? raw : (formatted||"")).trim();
-  var m = s.match(/(\d{4})-(\d{2})-(\d{2})/);              // ISO
+// Parse one string/Date/number into a LOCAL calendar date. Normalizes so
+// getDate()/getDay() are correct regardless of time zone (Tableau sends true
+// date columns as UTC midnight, which otherwise rolls back a day in Mountain Time).
+function parseDateString(x){
+  if (x == null) return null;
+  if (x instanceof Date) return isNaN(x) ? null : new Date(x.getUTCFullYear(), x.getUTCMonth(), x.getUTCDate());
+  var s = String(x).trim();
+  if (!s) return null;
+  var m = s.match(/(\d{4})-(\d{2})-(\d{2})/);              // ISO 2026-08-22
   if (m) return new Date(+m[1], +m[2]-1, +m[3]);
-  m = (formatted?String(formatted):s).match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/); // M/D/YYYY
+  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);           // 8/22/2026
   if (m) return new Date(+m[3], +m[1]-1, +m[2]);
-  var d = new Date(s || formatted);                        // e.g. "August 22, 2026"
+  m = s.match(/^(\d{4})(\d{2})(\d{2})$/);                  // 20260822 integer date
+  if (m) return new Date(+m[1], +m[2]-1, +m[3]);
+  if (/^-?\d+(\.\d+)?$/.test(s)) return null;              // bare number (e.g. an int serial) -> NOT a date
+  var d = new Date(s);                                     // "August 22, 2026"
   if (isNaN(d)) return null;
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+// Parse a Tableau data cell into a date, trying every representation it offers.
+// An MDY-derived date pill arrives as a bare int in value/nativeValue but carries
+// the readable date in formattedValue — so try formattedValue before value.
+function parseCellDate(cell){
+  if (!cell) return null;
+  return parseDateString(cell.nativeValue) ||
+         parseDateString(cell.formattedValue) ||
+         parseDateString(cell.value);
 }
 
 var MONTHS=["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
@@ -433,21 +443,6 @@ function render(model){
 
     host.appendChild(block);
   });
-
-  // --- TEMPORARY DEBUG PANEL (remove once sorting is confirmed) ---
-  try{
-    var d=window.__WA_DEBUG||{};
-    function ld(w){return (w&&w.date)?((w.date.getMonth()+1)+"/"+w.date.getDate()+"/"+w.date.getFullYear()):"—";}
-    var box=document.getElementById("wadebug")||document.createElement("pre");
-    box.id="wadebug";
-    box.style.cssText="white-space:pre-wrap;font:11px/1.5 monospace;background:#141414;color:#7CFC7C;padding:12px;margin:12px;border-radius:6px;overflow:auto;";
-    box.textContent="DEBUG "+(d.build||"?")+(d.err?("  ERR:"+d.err):"")
-      +"\nCOLUMNS ("+(d.cols?d.cols.length:0)+"):\n  "+((d.cols||[]).join("\n  "))
-      +"\nINDICES: "+JSON.stringify(d.idx||{})+"   (svcDate -1 = not found)"
-      +"\nWEEKENDS  this="+ld(model.thisW)+"  last="+ld(model.lastW)+"  prior="+ld(model.priorY)
-      +"\nSAMPLE ROWS:\n  "+((d.sample||[]).join("\n  "));
-    document.body.appendChild(box);
-  }catch(e){}
 }
 
 // ---- read summary data from the worksheet ----
@@ -486,10 +481,8 @@ function readRows(worksheet){
     }
     var out=[];
     data.forEach(function(row){
-      var rawS = iSunday>-1 ? row[iSunday] : null;
-      var sd = rawS ? dateParts(rawS.nativeValue!=null?rawS.nativeValue:rawS.value, rawS.formattedValue) : null;
-      var rawSvc = iSvcDate>-1 ? row[iSvcDate] : null;
-      var svcd = rawSvc ? dateParts(rawSvc.nativeValue!=null?rawSvc.nativeValue:rawSvc.value, rawSvc.formattedValue) : null;
+      var sd   = iSunday>-1  ? parseCellDate(row[iSunday])  : null;
+      var svcd = iSvcDate>-1 ? parseCellDate(row[iSvcDate]) : null;
       var vv = iVal>-1 ? row[iVal] : null;
       var num = vv ? (typeof vv.nativeValue==="number"?vv.nativeValue:parseFloat(String(vv.value).replace(/[^0-9.\-]/g,""))) : 0;
       if (isNaN(num)) num=0;
@@ -503,17 +496,6 @@ function readRows(worksheet){
         value:   num
       });
     });
-    try{
-      window.__WA_DEBUG = {
-        build:"dbg-1",
-        cols: columns.map(function(c){return c.fieldName+" ["+(c.dataType||"?")+"]";}),
-        idx:{campus:iCampus,service:iService,svcDate:iSvcDate,sunday:iSunday,week:iWeek,val:iVal},
-        sample: out.slice(0,8).map(function(r){
-          function ld(x){return x?((x.getMonth()+1)+"/"+x.getDate()+" dow"+x.getDay()):"null";}
-          return r.campus+" | "+r.service+" | svc="+ld(r.serviceDate)+" | sun="+ld(r.sunday)+" | "+r.agegroup+"="+r.value;
-        })
-      };
-    }catch(e){ window.__WA_DEBUG={err:String(e)}; }
     return out;
   }
 
