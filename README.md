@@ -4,6 +4,10 @@ A dashboard extension that reads the **Weekly Attendance** worksheet and rebuild
 the client's weekend report: grand total, adults/kids, per-campus and per-service
 breakdown, with **last-weekend** and **prior-year-same-week** comparisons.
 
+**Save as PDF:** click the download icon in the bottom-right of the black header. Tableau
+can't export extensions to PDF, so the extension makes its own — it opens a print-ready
+copy in a new tab and launches Save-as-PDF. (If nothing opens, allow pop-ups and retry.)
+
 ## Files
 - `WeekendAttendance.trex` — the manifest you drag into a Tableau dashboard.
 - `index.html` — the whole extension (design + logic in one file).
